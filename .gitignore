@@ -1,0 +1,48 @@
+# macOS metadata
+.DS_Store
+._*
+.AppleDouble/
+.LSOverride
+
+# Swift Package Manager and Xcode build output
+.build/
+.swiftpm/
+DerivedData/
+build/
+dist/
+xcuserdata/
+*.xcuserstate
+*.xcresult/
+*.xcarchive/
+*.dSYM/
+
+# Packaged applications and installers
+*.app/
+*.ipa
+*.pkg
+*.dmg
+
+# Local configuration, credentials, and signing material
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+*.provisionprofile
+
+# Local logs, caches, and runtime data
+*.log
+.cache/
+logs/
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+
+# Keep Package.resolved files versioned for reproducible dependencies.
