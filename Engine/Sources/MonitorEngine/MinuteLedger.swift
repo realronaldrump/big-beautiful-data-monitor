@@ -28,6 +28,7 @@ public struct MinuteLedger: Sendable {
         var total = ByteCounts.zero
         var packets = PacketCounts.zero
         var apps: [AppIdentity: ByteCounts] = [:]
+        var relays: [AppIdentity: ByteCounts] = [:]
         var bytesByNetwork: [NetworkKind: UInt64] = [:]
         var lastNetwork: NetworkKind = .offline
         var idleAtEnd = false
@@ -54,14 +55,15 @@ public struct MinuteLedger: Sendable {
         buckets[totalMinute, default: Bucket()].lastNetwork = tick.network
         buckets[totalMinute, default: Bucket()].idleAtEnd = tick.secondsSinceInput >= IdleClock.idleThreshold
 
-        if !tick.apps.isEmpty {
+        if !tick.apps.isEmpty || !tick.relays.isEmpty {
             let span = tick.appSpan ?? DateInterval(start: tick.time, duration: 0)
             for (minute, fraction) in Self.split(span) {
-                for (app, bytes) in tick.apps {
-                    let share = ByteCounts(down: UInt64((Double(bytes.down) * fraction).rounded()),
-                                           up: UInt64((Double(bytes.up) * fraction).rounded()))
-                    buckets[minute, default: Bucket()].apps[app, default: .zero] += share
+                func share(_ bytes: ByteCounts) -> ByteCounts {
+                    ByteCounts(down: UInt64((Double(bytes.down) * fraction).rounded()),
+                               up: UInt64((Double(bytes.up) * fraction).rounded()))
                 }
+                for (app, bytes) in tick.apps { buckets[minute, default: Bucket()].apps[app, default: .zero] += share(bytes) }
+                for (app, bytes) in tick.relays { buckets[minute, default: Bucket()].relays[app, default: .zero] += share(bytes) }
             }
         }
         return close(before: tick.time.addingTimeInterval(-grace))
@@ -90,10 +92,12 @@ public struct MinuteLedger: Sendable {
     private static func summarize(minute: Date, bucket: Bucket) -> MinuteSummary {
         var identities: [String: AppIdentity] = [AppIdentity.macSystem.key: .macSystem]
         for app in bucket.apps.keys { identities[app.key] = app }
+        for relay in bucket.relays.keys where identities[relay.key] == nil { identities[relay.key] = relay }
         let result = Reconciler.reconcile(
             total: bucket.total,
             packets: bucket.packets,
-            apps: Dictionary(bucket.apps.map { ($0.key.key, $0.value) }, uniquingKeysWith: +)
+            apps: Dictionary(bucket.apps.map { ($0.key.key, $0.value) }, uniquingKeysWith: +),
+            relays: Dictionary(bucket.relays.map { ($0.key.key, $0.value) }, uniquingKeysWith: +)
         )
         var apps: [AppIdentity: ByteCounts] = [:]
         for (key, bytes) in result.apps { apps[identities[key]!, default: .zero] += bytes }

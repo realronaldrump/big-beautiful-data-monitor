@@ -9,6 +9,9 @@ public struct UsageTick: Sendable {
     public let packets: PacketCounts
     /// Per-app bytes from any `nettop` sample that arrived during this second, before reconciling.
     public let apps: [AppIdentity: ByteCounts]
+    /// Bytes seen in relays (proxies and VPN tunnels), which mostly repeat other apps' bytes.
+    /// Kept apart: they only count toward what the apps cannot explain.
+    public let relays: [AppIdentity: ByteCounts]
     /// The stretch of time those app bytes cover (one sampling interval). Nil when no sample arrived.
     public let appSpan: DateInterval?
     public let network: NetworkKind
@@ -32,6 +35,7 @@ public final class UsageEngine: @unchecked Sendable {
     private var idle = IdleClock.Cached()
     private var timer: DispatchSourceTimer?
     private var pendingApps: [AppIdentity: ByteCounts] = [:]
+    private var pendingRelays: [AppIdentity: ByteCounts] = [:]
     private var pendingSpan: DateInterval?
     private var lastSampleTime: Date?
 
@@ -69,6 +73,7 @@ public final class UsageEngine: @unchecked Sendable {
             timer = nil
             lastSampleTime = nil
             pendingApps = [:]
+            pendingRelays = [:]
             pendingSpan = nil
         }
     }
@@ -85,7 +90,11 @@ public final class UsageEngine: @unchecked Sendable {
         var resolved: [(row: NettopRow, resolution: ProcessResolver.Resolution)] = []
         for row in sample.rows where !row.bytes.isZero {
             let resolution = resolver.resolve(pid: row.pid, nettopName: row.name)
-            pendingApps[resolution.identity, default: .zero] += row.bytes
+            if resolution.isRelay {
+                pendingRelays[resolution.identity, default: .zero] += row.bytes
+            } else {
+                pendingApps[resolution.identity, default: .zero] += row.bytes
+            }
             resolved.append((row, resolution))
         }
         let span = DateInterval(start: start, end: max(start, time))
@@ -100,11 +109,13 @@ public final class UsageEngine: @unchecked Sendable {
             total: delta.bytes,
             packets: delta.packets,
             apps: pendingApps,
+            relays: pendingRelays,
             appSpan: pendingSpan,
             network: network.current,
             secondsSinceInput: idle.secondsSinceInput()
         )
         pendingApps = [:]
+        pendingRelays = [:]
         pendingSpan = nil
         onTick?(tick)
     }

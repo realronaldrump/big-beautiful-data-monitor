@@ -17,7 +17,19 @@ public final class ProcessResolver: @unchecked Sendable {
         public let method: Method
         /// The executable's full name, for debug logging only. Never shown in the UI.
         public let executableName: String
+        /// A network extension that carries other apps' traffic (a transparent proxy such as
+        /// AdGuard, a VPN tunnel such as Tailscale). `nettop` sees those bytes twice: in the app
+        /// and again in the relay, so relays are counted last (see `Reconciler`).
+        public var isRelay = false
     }
+
+    /// Network extension types that resend other apps' traffic through their own connections.
+    /// Content filters (`filter-data`, used by TripMode and Moonlock) only inspect, so they are not relays.
+    static let relayProviderTypes: Set<String> = [
+        "com.apple.networkextension.app-proxy",
+        "com.apple.networkextension.packet-tunnel",
+        "com.apple.networkextension.dns-proxy",
+    ]
 
     private struct CacheKey: Hashable {
         let pid: pid_t
@@ -31,6 +43,7 @@ public final class ProcessResolver: @unchecked Sendable {
     /// (a download tool's final bytes are often reported a moment after it quits).
     private var recent: [pid_t: (nettopName: String, resolution: Resolution)] = [:]
     private var bundleIDLookups: [String: AppIdentity?] = [:]
+    private var relayBundles: [String: Bool] = [:]
 
     /// Called once per unknown process in debug builds, so the name table can grow.
     public var logUnknown: (@Sendable (String) -> Void)?
@@ -63,7 +76,8 @@ public final class ProcessResolver: @unchecked Sendable {
             return cached
         }
 
-        let resolution = resolveUncached(pid: pid, info: info, nettopName: nettopName)
+        var resolution = resolveUncached(pid: pid, info: info, nettopName: nettopName)
+        resolution.isRelay = Self.executablePath(pid).map(isRelay(executablePath:)) ?? false
         if resolution.method == .unknown { logUnknown?("\(resolution.executableName) (pid \(pid))") }
 
         lock.lock()
@@ -165,6 +179,40 @@ public final class ProcessResolver: @unchecked Sendable {
             parts.removeLast()
         }
         return nil
+    }
+
+    /// Whether the executable belongs to a network extension that relays other apps' traffic.
+    func isRelay(executablePath path: String) -> Bool {
+        guard let bundle = Self.extensionBundlePath(path) else { return false }
+        if let known = lock.withLock({ relayBundles[bundle] }) { return known }
+        let info = NSDictionary(contentsOfFile: bundle + "/Contents/Info.plist") as? [String: Any]
+        let relay = Self.isRelay(info: info)
+        lock.withLock { relayBundles[bundle] = relay }
+        return relay
+    }
+
+    /// The `.systemextension` or `.appex` bundle containing an executable, if any.
+    static func extensionBundlePath(_ path: String) -> String? {
+        for suffix in [".systemextension/", ".appex/"] {
+            if let range = path.range(of: suffix) {
+                return String(path[..<range.upperBound].dropLast())
+            }
+        }
+        return nil
+    }
+
+    static func isRelay(info: [String: Any]?) -> Bool {
+        guard let info else { return false }
+        if let network = info["NetworkExtension"] as? [String: Any],
+           let classes = network["NEProviderClasses"] as? [String: Any],
+           classes.keys.contains(where: relayProviderTypes.contains) {
+            return true
+        }
+        if let ext = info["NSExtension"] as? [String: Any],
+           let point = ext["NSExtensionPointIdentifier"] as? String {
+            return relayProviderTypes.contains(point)
+        }
+        return false
     }
 
     static func isInsideSystemFramework(_ path: String) -> Bool {

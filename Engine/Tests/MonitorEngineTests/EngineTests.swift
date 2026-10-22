@@ -110,6 +110,25 @@ func samples(_ events: [NettopEvent]) -> [NettopSample] {
         #expect(sum == ByteCounts(down: 100_000, up: 9_000))
     }
 
+    @Test func relaysOnlyGetWhatTheAppsCannotExplain() {
+        // AdGuard relayed Chrome's 1,000 bytes and fetched 50 bytes of filter updates of its own.
+        let result = Reconciler.reconcile(total: ByteCounts(down: 1_050, up: 0),
+                                          apps: ["chrome": ByteCounts(down: 1_000, up: 0)],
+                                          relays: ["adguard": ByteCounts(down: 1_050, up: 0)])
+        #expect(result.apps["chrome"] == ByteCounts(down: 1_000, up: 0))
+        #expect(result.apps["adguard"] == ByteCounts(down: 50, up: 0))
+        #expect(result.unexplained == .zero)
+    }
+
+    @Test func aRelayWithNothingToRepeatKeepsItsOwnTraffic() {
+        // SSH inside a Tailscale tunnel that nettop does not see: the tunnel is the only witness.
+        let result = Reconciler.reconcile(total: ByteCounts(down: 10_300, up: 2_000),
+                                          apps: [:],
+                                          relays: ["tailscale": ByteCounts(down: 10_000, up: 1_900)])
+        #expect(result.apps["tailscale"] == ByteCounts(down: 10_000, up: 1_900))
+        #expect(result.unexplained == ByteCounts(down: 300, up: 100))
+    }
+
     @Test func zeroTotalDropsEverything() {
         let result = Reconciler.reconcile(total: .zero, apps: ["a": ByteCounts(down: 5, up: 5)])
         #expect(result.apps.isEmpty)
@@ -120,10 +139,27 @@ func samples(_ events: [NettopEvent]) -> [NettopSample] {
 @Suite struct LedgerTests {
     let app = AppIdentity(key: "com.example", displayName: "Example", kind: .app)
 
-    func tick(_ time: Date, total: UInt64, app appBytes: UInt64 = 0, span: DateInterval? = nil) -> UsageTick {
+    let proxy = AppIdentity(key: "com.example.proxy", displayName: "Proxy", kind: .app)
+
+    func tick(_ time: Date, total: UInt64, app appBytes: UInt64 = 0, relay relayBytes: UInt64 = 0,
+              span: DateInterval? = nil) -> UsageTick {
         UsageTick(time: time, total: ByteCounts(down: total, up: 0), packets: .zero,
                   apps: appBytes > 0 ? [app: ByteCounts(down: appBytes, up: 0)] : [:],
+                  relays: relayBytes > 0 ? [proxy: ByteCounts(down: relayBytes, up: 0)] : [:],
                   appSpan: span, network: .wifi, secondsSinceInput: 0)
+    }
+
+    @Test func trafficRelayedThroughAProxyIsCountedOnce() {
+        // A 30 MB download in Chrome, relayed by AdGuard: nettop sees it in both.
+        var ledger = MinuteLedger(grace: 15)
+        let minute = MinuteLedger.minuteStart(Date())
+        var closed = ledger.add(tick(minute.addingTimeInterval(30), total: 31_000_000, app: 30_000_000, relay: 30_500_000))
+        closed += ledger.close()
+        #expect(closed.count == 1)
+        // Chrome keeps all of its download; the proxy gets only the 1 MB the apps cannot explain.
+        #expect(closed[0].apps[app] == ByteCounts(down: 30_000_000, up: 0))
+        #expect(closed[0].apps[proxy] == ByteCounts(down: 1_000_000, up: 0))
+        #expect(closed[0].apps[.macSystem] == nil)
     }
 
     @Test func spreadsAppBytesAcrossTheMinuteBoundary() {
@@ -176,6 +212,33 @@ func samples(_ events: [NettopEvent]) -> [NettopSample] {
         #expect(resolver.appIdentity(containing: "/System/Library/PrivateFrameworks/IMTransferServices.framework/IMTransferAgent.app/Contents/MacOS/IMTransferAgent") == nil)
         #expect(resolver.appIdentity(containing: "/System/Applications/Messages.app/Contents/MacOS/Messages")?.displayName == "Messages")
         #expect(FriendlyNames.lookup("IMTransferAgent")?.displayName == "Messages and FaceTime")
+    }
+
+    @Test func proxiesAndTunnelsAreRelaysButFiltersAreNot() {
+        func info(_ type: String) -> [String: Any] { ["NetworkExtension": ["NEProviderClasses": [type: "Provider"]]] }
+        #expect(ProcessResolver.isRelay(info: info("com.apple.networkextension.app-proxy")))
+        #expect(ProcessResolver.isRelay(info: info("com.apple.networkextension.packet-tunnel")))
+        #expect(!ProcessResolver.isRelay(info: info("com.apple.networkextension.filter-data")))
+        #expect(ProcessResolver.isRelay(info: ["NSExtension": ["NSExtensionPointIdentifier": "com.apple.networkextension.packet-tunnel"]]))
+        #expect(!ProcessResolver.isRelay(info: [:]))
+        #expect(ProcessResolver.extensionBundlePath("/Library/SystemExtensions/X/a.b.systemextension/Contents/MacOS/a") == "/Library/SystemExtensions/X/a.b.systemextension")
+    }
+
+    @Test func installedAdGuardAndTailscaleExtensionsAreRecognized() throws {
+        let resolver = ProcessResolver()
+        let extensions = (try? FileManager.default.contentsOfDirectory(atPath: "/Library/SystemExtensions")) ?? []
+        for folder in extensions {
+            let base = "/Library/SystemExtensions/\(folder)"
+            for bundle in (try? FileManager.default.contentsOfDirectory(atPath: base)) ?? [] where bundle.hasSuffix(".systemextension") {
+                let executable = "\(base)/\(bundle)/Contents/MacOS/x"
+                if bundle.hasPrefix("com.adguard") || bundle.hasPrefix("io.tailscale") {
+                    #expect(resolver.isRelay(executablePath: executable), "\(bundle) should be a relay")
+                }
+                if bundle.hasPrefix("ch.tripmode") || bundle.hasPrefix("com.macpaw.moonlock") {
+                    #expect(!resolver.isRelay(executablePath: executable), "\(bundle) is only a filter")
+                }
+            }
+        }
     }
 
     @Test func bundleIDComponentsLookLikeBundleIDs() {

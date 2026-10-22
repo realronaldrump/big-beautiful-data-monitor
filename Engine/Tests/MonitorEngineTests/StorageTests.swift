@@ -188,7 +188,7 @@ func temporaryDatabaseURL() -> URL {
         let start = Date(timeIntervalSince1970: 1_000_000)
         for second in 0..<1_200 {
             buffer.append(UsageTick(time: start.addingTimeInterval(Double(second)), total: ByteCounts(down: 1, up: 0), packets: .zero,
-                                    apps: second % 2 == 0 ? [safari: ByteCounts(down: 10, up: 0)] : [:],
+                                    apps: second % 2 == 0 ? [safari: ByteCounts(down: 10, up: 0)] : [:], relays: [:],
                                     appSpan: nil, network: .wifi, secondsSinceInput: 0))
         }
         let now = start.addingTimeInterval(1_199)

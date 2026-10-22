@@ -54,6 +54,11 @@ app every second while a window is open, every 10 seconds otherwise. Each minute
 are fitted to the true total: packet headers are shared out by usage, and anything left unexplained
 (for example file sharing done inside the kernel) is shown as "Mac system".
 
+Proxies and VPN tunnels such as AdGuard and Tailscale resend other apps' traffic through their own
+connections, so `nettop` sees those bytes twice. The app recognizes them from their network extension
+type and counts them last: the app that asked for the data keeps it, and the proxy or tunnel only gets
+what nothing else explains (its own updates, or tunnel traffic no app can be matched to).
+
 Notes from building it on macOS 27, where the spec's assumptions did not hold:
 
 | Spec said | What actually happens | What the app does |

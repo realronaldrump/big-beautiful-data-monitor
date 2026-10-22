@@ -55,6 +55,7 @@ final class LiveState: @unchecked Sendable {
     let started = Date()
     var total = ByteCounts.zero
     var apps: [AppIdentity: ByteCounts] = [:]
+    var relays: [AppIdentity: ByteCounts] = [:]
     var lastSecondApps: [AppIdentity: ByteCounts] = [:]
     var lastSecondTotal = ByteCounts.zero
     var pids: [AppIdentity: [String: ByteCounts]] = [:]
@@ -112,6 +113,7 @@ func runLive() {
         state.lastSecondTotal = tick.total
         state.network = tick.network
         for (app, bytes) in tick.apps { state.apps[app, default: .zero] += bytes }
+        for (relay, bytes) in tick.relays { state.relays[relay, default: .zero] += bytes }
         if !tick.apps.isEmpty || interval == 1 { state.lastSecondApps = tick.apps }
         state.minutes += state.ledger.add(tick)
         let elapsed = Date().timeIntervalSince(state.started)
@@ -208,6 +210,13 @@ func printSummary(_ state: LiveState) {
             for (label, pidBytes) in pids.sorted(by: { $0.value.total > $1.value.total }).prefix(4) {
                 print("      " + pad(label, 40) + both(pidBytes))
             }
+        }
+    }
+    if !state.relays.isEmpty {
+        print("")
+        print("Relays (proxies and VPN tunnels that resend other apps' traffic; counted last):")
+        for (relay, bytes) in state.relays.sorted(by: { $0.value.total > $1.value.total }) {
+            print("  " + pad(relay.displayName, 30) + both(bytes) + "   exact: \(bytes.down) down")
         }
     }
     print("")

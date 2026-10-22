@@ -10,6 +10,8 @@ import Foundation
 /// - otherwise the gap is first explained as packet headers (estimated from the packet count),
 ///   shared among apps by how much each moved, since an app's downloads also cause the
 ///   acknowledgements sent back;
+/// - relays (proxies and VPN tunnels, which resend other apps' traffic) then get whatever is
+///   still unexplained, up to the bytes they moved, so relayed traffic is not counted twice;
 /// - whatever is still unexplained is "Mac system".
 public enum Reconciler {
     /// Average bytes of link, IP and TCP/UDP headers per packet. IPv4 TCP with timestamps is
@@ -22,18 +24,29 @@ public enum Reconciler {
     }
 
     public static func reconcile(total: ByteCounts, packets: PacketCounts = .zero,
-                                 apps: [String: ByteCounts]) -> Result {
+                                 apps: [String: ByteCounts], relays: [String: ByteCounts] = [:]) -> Result {
         let weights = apps.mapValues(\.total)
         let down = fit(apps.mapValues(\.down), into: total.down,
                        headers: packets.down &* headerBytesPerPacket, weights: weights)
         let up = fit(apps.mapValues(\.up), into: total.up,
                      headers: packets.up &* headerBytesPerPacket, weights: weights)
+        let relayDown = fill(down.gap, from: relays.mapValues(\.down))
+        let relayUp = fill(up.gap, from: relays.mapValues(\.up))
         var fitted: [String: ByteCounts] = [:]
-        for key in apps.keys {
-            let counts = ByteCounts(down: down.values[key] ?? 0, up: up.values[key] ?? 0)
+        for key in Set(apps.keys).union(relays.keys) {
+            let counts = ByteCounts(down: (down.values[key] ?? 0) + (relayDown.values[key] ?? 0),
+                                    up: (up.values[key] ?? 0) + (relayUp.values[key] ?? 0))
             if !counts.isZero { fitted[key] = counts }
         }
-        return Result(apps: fitted, unexplained: ByteCounts(down: down.gap, up: up.gap))
+        return Result(apps: fitted, unexplained: ByteCounts(down: relayDown.gap, up: relayUp.gap))
+    }
+
+    /// Gives relays as much of the unexplained gap as they moved themselves; returns what is left.
+    static func fill(_ gap: UInt64, from relays: [String: UInt64]) -> (values: [String: UInt64], gap: UInt64) {
+        let moved = relays.values.reduce(0, &+)
+        guard gap > 0, moved > 0 else { return ([:], gap) }
+        if moved <= gap { return (relays, gap - moved) }
+        return (share(gap, by: relays), 0)
     }
 
     /// Returns the values fitted to the total and the unexplained remainder.
