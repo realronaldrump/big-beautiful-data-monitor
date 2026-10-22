@@ -117,6 +117,9 @@ public final class ProcessResolver: @unchecked Sendable {
     /// reverse-DNS component of the path (system extensions live outside their app, e.g.
     /// `io.tailscale.ipn.macsys.network-extension` belongs to `io.tailscale.ipn.macsys`).
     func appIdentity(containing path: String) -> AppIdentity? {
+        // Small helper apps tucked inside system frameworks (such as IMTransferAgent.app) are not
+        // apps a person would recognize; they fall through to the friendly name table instead.
+        if Self.isInsideSystemFramework(path) { return nil }
         if let range = path.range(of: ".app/") ?? (path.hasSuffix(".app") ? path.range(of: ".app", options: .backwards) : nil) {
             let appPath = String(path[..<range.upperBound]).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             return identity(forAppAt: "/" + appPath)
@@ -162,6 +165,12 @@ public final class ProcessResolver: @unchecked Sendable {
             parts.removeLast()
         }
         return nil
+    }
+
+    static func isInsideSystemFramework(_ path: String) -> Bool {
+        guard path.hasPrefix("/System/") || path.contains("/Cryptexes/") else { return false }
+        guard let app = path.range(of: ".app/") ?? path.range(of: ".app", options: .backwards) else { return false }
+        return path[..<app.lowerBound].contains(".framework/")
     }
 
     static func looksLikeBundleID(_ component: String) -> Bool {

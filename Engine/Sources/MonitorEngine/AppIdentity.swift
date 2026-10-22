@@ -44,6 +44,12 @@ enum FriendlyNames {
     static let security = AppIdentity.system("security", "Security checks", symbol: "checkmark.shield")
     static let nearby = AppIdentity.system("nearby", "Nearby devices", symbol: "airplayaudio")
     static let messages = AppIdentity.system("messages", "Messages and FaceTime", symbol: "message")
+    static let appleServices = AppIdentity.system("appleservices", "Apple services", symbol: "apple.logo")
+    static let findMy = AppIdentity.system("findmy", "Find My", symbol: "location.circle")
+    static let account = AppIdentity.system("account", "Apple Account", symbol: "person.crop.circle")
+    static let diagnostics = AppIdentity.system("diagnostics", "Diagnostics reports", symbol: "stethoscope")
+    static let photos = AppIdentity.system("photos", "Photos", symbol: "photo")
+    static let airplay = AppIdentity.system("airplay", "AirPlay", symbol: "airplayvideo")
 
     static let table: [String: AppIdentity] = [
         "nsurlsessiond": .system("background", "Background downloads", symbol: "arrow.down.circle"),
@@ -68,6 +74,34 @@ enum FriendlyNames {
         "identityservicesd": messages,
         "IMTransferAgent": messages,
         "imagent": messages,
+        "callservicesd": messages,
+        "avconferenced": messages,
+        "accountsd": .system("accounts", "Internet accounts", symbol: "at"),
+        "amsengagementd": appleServices,
+        "amsaccountsd": appleServices,
+        "amsondevicestoraged": appleServices,
+        "searchpartyd": findMy,
+        "findmydeviced": findMy,
+        "findmylocated": findMy,
+        "secd": account,
+        "photolibraryd": photos,
+        "cloudphotosd": .system("icloudphotos", "iCloud Photos", symbol: "photo.on.rectangle"),
+        "mediaanalysisd": photos,
+        "photoanalysisd": photos,
+        "AirPlayXPCHelper": airplay,
+        "mediaremoted": airplay,
+        "ReportCrash": diagnostics,
+        "SubmitDiagInfo": diagnostics,
+        "analyticsd": diagnostics,
+        "CalendarAgent": .system("calendar", "Calendar", symbol: "calendar"),
+        "remindd": .system("reminders", "Reminders", symbol: "checklist"),
+        "ContactsAgent": .system("contacts", "Contacts", symbol: "person.2"),
+        "weatherd": .system("weather", "Weather", symbol: "cloud.sun"),
+        "newsd": .system("news", "News", symbol: "newspaper"),
+        "itunescloudd": .system("media", "Music and TV library", symbol: "music.note"),
+        "suggestd": .system("suggestions", "Siri and Spotlight", symbol: "magnifyingglass"),
+        "siriknowledged": .system("suggestions", "Siri and Spotlight", symbol: "magnifyingglass"),
+        "WiFiAgent": housekeeping,
         "rapportd": nearby,
         "sharingd": nearby,
         "usbmuxd": .system("iphone", "iPhone connection", symbol: "iphone"),
@@ -75,7 +109,7 @@ enum FriendlyNames {
         "appstoreagent": .system("appstore", "App Store", symbol: "bag"),
         "storedownloadd": .system("appstore", "App Store", symbol: "bag"),
         "commerce": .system("appstore", "App Store", symbol: "bag"),
-        "akd": .system("account", "Apple Account", symbol: "person.crop.circle"),
+        "akd": account,
         "parsecd": .system("suggestions", "Siri and Spotlight", symbol: "magnifyingglass"),
         "assistantd": .system("suggestions", "Siri and Spotlight", symbol: "magnifyingglass"),
         "locationd": .system("location", "Location services", symbol: "location"),

@@ -45,6 +45,23 @@ public enum IdleClock {
         CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
     }
 
+    /// Asks the window server only every few seconds and counts up in between. Idle only matters
+    /// per minute, so being a few seconds behind changes nothing that is shown.
+    public struct Cached: Sendable {
+        private var value: TimeInterval = 0
+        private var checked = Date.distantPast
+
+        public init() {}
+
+        public mutating func secondsSinceInput(now: Date = Date()) -> TimeInterval {
+            let elapsed = now.timeIntervalSince(checked)
+            guard elapsed >= 5 else { return value + elapsed }
+            value = IdleClock.secondsSinceInput()
+            checked = now
+            return value
+        }
+    }
+
     /// A minute counts as idle when nobody touched the Mac for all of it.
     public static let idleThreshold: TimeInterval = 60
 }

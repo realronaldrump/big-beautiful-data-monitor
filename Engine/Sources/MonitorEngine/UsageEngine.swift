@@ -29,6 +29,7 @@ public final class UsageEngine: @unchecked Sendable {
     private let sampler: NettopSampler
     private let network = NetworkKindMonitor()
     private var meter = InterfaceMeter()
+    private var idle = IdleClock.Cached()
     private var timer: DispatchSourceTimer?
     private var pendingApps: [AppIdentity: ByteCounts] = [:]
     private var pendingSpan: DateInterval?
@@ -48,9 +49,11 @@ public final class UsageEngine: @unchecked Sendable {
     public func start() {
         queue.async { [self] in
             guard timer == nil else { return }
-            _ = meter.sample()
+            // The meter keeps its last reading across stop and start, so bytes that moved while
+            // asleep (Power Nap, iCloud) are counted in the first second after waking.
             let timer = DispatchSource.makeTimerSource(queue: queue)
-            timer.schedule(deadline: .now() + 1, repeating: 1, leeway: .milliseconds(50))
+            // Generous leeway lets macOS batch this wakeup with others.
+            timer.schedule(deadline: .now() + 1, repeating: 1, leeway: .milliseconds(250))
             timer.setEventHandler { [weak self] in self?.tick() }
             timer.resume()
             self.timer = timer
@@ -58,9 +61,10 @@ public final class UsageEngine: @unchecked Sendable {
         sampler.start()
     }
 
+    /// Stops sampling and waits until no more ticks can arrive. Do not call from `onTick`.
     public func stop() {
         sampler.stop()
-        queue.async { [self] in
+        queue.sync { [self] in
             timer?.cancel()
             timer = nil
             lastSampleTime = nil
@@ -98,7 +102,7 @@ public final class UsageEngine: @unchecked Sendable {
             apps: pendingApps,
             appSpan: pendingSpan,
             network: network.current,
-            secondsSinceInput: IdleClock.secondsSinceInput()
+            secondsSinceInput: idle.secondsSinceInput()
         )
         pendingApps = [:]
         pendingSpan = nil

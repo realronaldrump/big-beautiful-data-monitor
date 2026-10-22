@@ -25,20 +25,27 @@ public struct InterfaceDelta: Sendable, Hashable {
 /// (`IFMIB_IFDATA`, the one `netstat -ib` uses) still returns the exact 64-bit counters, with no
 /// entitlement or permission needed.
 public enum InterfaceCounters {
-    /// Readings for every interface, or only the physical ones (the cheap path used every second).
+    /// Readings for every interface, or only the physical ones.
     public static func readAll(physicalOnly: Bool = false) -> [InterfaceReading] {
+        read(interfaces().filter { !physicalOnly || isPhysical($0.name) })
+    }
+
+    /// Every interface's name and index. Listing them asks the kernel for all ~35 interfaces,
+    /// so the meter does this only every few seconds and reads just the physical ones in between.
+    public static func interfaces() -> [(name: String, index: UInt32)] {
         guard let list = if_nameindex() else { return [] }
         defer { if_freenameindex(list) }
-        var readings: [InterfaceReading] = []
+        var interfaces: [(name: String, index: UInt32)] = []
         var entry = list
         while entry.pointee.if_index != 0, let cName = entry.pointee.if_name {
-            let name = String(cString: cName)
-            if !physicalOnly || isPhysical(name), let reading = reading(name: name, index: entry.pointee.if_index) {
-                readings.append(reading)
-            }
+            interfaces.append((String(cString: cName), entry.pointee.if_index))
             entry += 1
         }
-        return readings
+        return interfaces
+    }
+
+    public static func read(_ interfaces: [(name: String, index: UInt32)]) -> [InterfaceReading] {
+        interfaces.compactMap { reading(name: $0.name, index: $0.index) }
     }
 
     /// Wi-Fi, Ethernet and iPhone USB tethering all appear as `en*`; cellular as `pdp_ip*`.
@@ -64,11 +71,29 @@ public enum InterfaceCounters {
 public struct InterfaceMeter: Sendable {
     private var last: [String: InterfaceReading] = [:]
     private var primed = false
+    private var physical: [(name: String, index: UInt32)] = []
+    private var calls = 0
 
     public init() {}
 
     /// What moved on physical interfaces since the previous call. The first call returns zero.
-    public mutating func sample(_ readings: [InterfaceReading] = InterfaceCounters.readAll(physicalOnly: true)) -> InterfaceDelta {
+    /// The list of interfaces is refreshed every five seconds (or when a read fails), so a newly
+    /// plugged-in iPhone or Ethernet adapter is picked up within seconds.
+    public mutating func sample() -> InterfaceDelta {
+        if calls % 5 == 0 || physical.isEmpty {
+            physical = InterfaceCounters.interfaces().filter { InterfaceCounters.isPhysical($0.name) }
+        }
+        calls += 1
+        var readings = InterfaceCounters.read(physical)
+        if readings.count != physical.count {
+            physical = InterfaceCounters.interfaces().filter { InterfaceCounters.isPhysical($0.name) }
+            readings = InterfaceCounters.read(physical)
+        }
+        return sample(readings)
+    }
+
+    /// The same, from readings taken elsewhere (for tests).
+    public mutating func sample(_ readings: [InterfaceReading]) -> InterfaceDelta {
         var delta = InterfaceDelta.zero
         var current: [String: InterfaceReading] = [:]
         for reading in readings where InterfaceCounters.isPhysical(reading.name) {

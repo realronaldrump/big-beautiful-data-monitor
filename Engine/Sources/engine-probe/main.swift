@@ -6,22 +6,32 @@
 //   engine-probe --interval 10   sample apps every 10 seconds (the closed-window rate)
 //   engine-probe --pids          show which processes rolled into each app
 //   engine-probe --resolve 123   show which app a process ID is attributed to
+//   engine-probe --record        also save each minute to the app's database
+//   engine-probe --report        print what the database holds: today, today by hour, this month
+//   engine-probe --db PATH       use another database file (with --record or --report)
+//   engine-probe --simulate-month PATH   fill a new database with a worst-case month and a year of hours
+//   engine-probe --demo-db PATH  fill a new scratch database with a plausible month, for checking the design
 
 import Foundation
 import MonitorEngine
+import UsageStore
 
 let arguments = CommandLine.arguments
 func value(after flag: String) -> Int? {
     arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? Int(arguments[$0 + 1]) : nil }
 }
+func string(after flag: String) -> String? {
+    arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+}
 let checkMode = arguments.contains("--check")
+let recordMode = arguments.contains("--record")
+let databaseURL = string(after: "--db").map { URL(filePath: $0) } ?? UsageDatabase.defaultURL
 let showPIDs = arguments.contains("--pids")
 let duration = value(after: "--duration")
 let interval = value(after: "--interval") ?? 1
 let interactive = isatty(STDOUT_FILENO) == 1 && duration == nil
 
 setvbuf(stdout, nil, _IOLBF, 0)
-signal(SIGINT) { _ in exit(0) }
 
 func pad(_ text: String, _ width: Int) -> String {
     text.count >= width ? String(text.prefix(width)) : text + String(repeating: " ", count: width - text.count)
@@ -52,6 +62,7 @@ final class LiveState: @unchecked Sendable {
     var status: NettopSampler.Status = .stopped
     var ledger: MinuteLedger
     var minutes: [MinuteSummary] = []
+    var savedMinutes = 0
     var network: NetworkKind = .offline
 
     init(interval: Int) {
@@ -60,11 +71,32 @@ final class LiveState: @unchecked Sendable {
 }
 
 nonisolated(unsafe) var liveEngine: UsageEngine?
+nonisolated(unsafe) var liveRecorder: UsageRecorder?
+nonisolated(unsafe) var signalSource: DispatchSourceSignal?
 
 func runLive() {
     let engine = UsageEngine(perAppInterval: interval)
     liveEngine = engine
     let state = LiveState(interval: interval)
+    if recordMode {
+        do {
+            liveRecorder = UsageRecorder(engine: engine, database: try UsageDatabase(url: databaseURL))
+        } catch {
+            print("Could not open the database at \(databaseURL.path): \(error)")
+            exit(1)
+        }
+        liveRecorder?.onSaved = { minutes in state.savedMinutes += minutes.count }
+        liveRecorder?.onError = { error in FileHandle.standardError.write(Data("storage error: \(error)\n".utf8)) }
+    }
+    // Control-C saves the minutes still in progress before quitting.
+    signal(SIGINT, SIG_IGN)
+    let source = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+    source.setEventHandler {
+        liveRecorder?.stop()
+        exit(0)
+    }
+    source.resume()
+    signalSource = source
     #if DEBUG
     engine.resolver.logUnknown = { name in FileHandle.standardError.write(Data("unknown process → Mac system: \(name)\n".utf8)) }
     #endif
@@ -75,7 +107,7 @@ func runLive() {
             state.methods[resolution.identity, default: []].insert(resolution.method.rawValue)
         }
     }
-    engine.onTick = { tick in
+    let onTick: @Sendable (UsageTick) -> Void = { tick in
         state.total += tick.total
         state.lastSecondTotal = tick.total
         state.network = tick.network
@@ -85,12 +117,20 @@ func runLive() {
         let elapsed = Date().timeIntervalSince(state.started)
         if let duration, elapsed >= Double(duration) {
             state.minutes += state.ledger.close()
+            liveRecorder?.flush()
             printSummary(state)
+            if recordMode { print("\nSaved \(state.savedMinutes) minute(s) to \(databaseURL.path)") }
             exit(0)
         }
         if interactive { render(state) } else { logLine(tick, state) }
     }
-    engine.start()
+    if let liveRecorder {
+        liveRecorder.onTick = onTick
+        liveRecorder.start()
+    } else {
+        engine.onTick = onTick
+        engine.start()
+    }
 }
 
 func networkName(_ kind: NetworkKind) -> String {
@@ -115,7 +155,8 @@ func statusText(_ status: NettopSampler.Status) -> String {
 func render(_ state: LiveState) {
     var lines: [String] = []
     let elapsed = Int(Date().timeIntervalSince(state.started))
-    lines.append("Engine probe   \(clock.string(from: Date()))   \(networkName(state.network))   \(statusText(state.status))")
+    lines.append("Engine probe   \(clock.string(from: Date()))   \(networkName(state.network))   \(statusText(state.status))"
+                 + (recordMode ? "   saving: \(state.savedMinutes) minute(s) saved" : ""))
     lines.append("")
     lines.append("This second  (true total)   \(both(state.lastSecondTotal))")
     lines.append("Since start  (\(elapsed / 60)m \(elapsed % 60)s)          \(both(state.total))")
@@ -222,8 +263,106 @@ func runCheck() {
     sampler.start()
 }
 
+// MARK: - Report
+
+func runReport() {
+    let database: UsageDatabase
+    do { database = try UsageDatabase(url: databaseURL) } catch {
+        print("Could not open the database at \(databaseURL.path): \(error)")
+        exit(1)
+    }
+    let now = Date()
+    let day = database.day(containing: now)
+    let hourFormat = DateFormatter()
+    hourFormat.dateFormat = "HH:mm"
+    let dayFormat = DateFormatter()
+    dayFormat.dateFormat = "EEE MMM d"
+    do {
+        print("Database: \(databaseURL.path)")
+        print("File size: \(FriendlyBytes.format(UInt64(database.fileSize)))   first day: \(try database.firstDay().map(dayFormat.string(from:)) ?? "none yet")")
+        print("")
+        let total = try database.total(in: day)
+        print("Today: \(FriendlyBytes.format(total.total))   (\(both(total)))")
+        for usage in try database.apps(in: day).prefix(12) {
+            let share = total.total > 0 ? Double(usage.bytes.total) / Double(total.total) * 100 : 0
+            let color = usage.app.iconColor.map { String(format: "#%06X", $0) } ?? "–"
+            print("  " + pad(usage.app.identity.displayName, 28) + both(usage.bytes) + String(format: "  %5.1f%%", share) + "   color \(color)")
+        }
+        print("")
+        print("Today by hour (the Day ring's petals):")
+        for hour in try database.hours(in: day) {
+            print("  \(hourFormat.string(from: hour.hour))  " + lpad(FriendlyBytes.format(hour.total.total), 8) + "   top app: \(hour.topApp?.identity.displayName ?? "–")")
+        }
+        print("")
+        print("This month by day (the Month calendar's circles):")
+        for usage in try database.days(in: database.month(containing: now)) {
+            print("  \(pad(dayFormat.string(from: usage.day), 12))" + lpad(FriendlyBytes.format(usage.total.total), 8) + (usage.usedHotspot ? "   hotspot" : ""))
+        }
+    } catch {
+        print("Could not read the database: \(error)")
+        exit(1)
+    }
+}
+
+// MARK: - Size check
+
+func runSimulation(path: String) {
+    let url = URL(filePath: path)
+    guard !FileManager.default.fileExists(atPath: url.path) else {
+        print("\(url.path) already exists; pick a new path.")
+        exit(1)
+    }
+    let database: UsageDatabase
+    do { database = try UsageDatabase(url: url) } catch {
+        print("Could not create \(url.path): \(error)")
+        exit(1)
+    }
+    // The spec's upper bound: 25 apps active in every single minute.
+    let apps = (1...25).map { AppIdentity(key: "sim.app\($0)", displayName: "App \($0)", kind: .system, symbolName: "app") }
+    let end = MinuteLedger.minuteStart(Date())
+    let started = Date()
+    func minute(_ time: Date) -> MinuteSummary {
+        var byApp: [AppIdentity: ByteCounts] = [:]
+        for (index, app) in apps.enumerated() {
+            byApp[app] = ByteCounts(down: UInt64.random(in: 1_000...50_000_000) / UInt64(index + 1), up: UInt64.random(in: 100...2_000_000))
+        }
+        return MinuteSummary(minute: time, total: byApp.values.reduce(.zero, +), apps: byApp, network: .wifi, idle: false)
+    }
+    do {
+        // A year of hours (one busy minute per hour), then 30 days of every minute.
+        var batch: [MinuteSummary] = []
+        for hour in stride(from: 365 * 24, to: 30 * 24, by: -1) {
+            batch.append(minute(end.addingTimeInterval(-Double(hour) * 3_600)))
+            if batch.count >= 240 { try database.save(batch); batch = [] }
+        }
+        for offset in stride(from: 30 * 1_440, to: 0, by: -1) {
+            batch.append(minute(end.addingTimeInterval(-Double(offset) * 60)))
+            if batch.count >= 60 { try database.save(batch); batch = [] }
+        }
+        try database.save(batch)
+        try database.runMaintenance(now: end)
+    } catch {
+        print("Simulation failed: \(error)")
+        exit(1)
+    }
+    print(String(format: "Wrote a worst-case year in %.0f s.", Date().timeIntervalSince(started)))
+    print("Data stored: \(FriendlyBytes.format(UInt64(database.dataSize)))   (file on disk: \(FriendlyBytes.format(UInt64(database.fileSize))))")
+}
+
 // MARK: - Main
 
+if let path = string(after: "--demo-db") {
+    runDemo(path: path)
+    exit(0)
+}
+if let path = string(after: "--simulate-month") {
+    runSimulation(path: path)
+    exit(0)
+}
+if arguments.contains("--report") {
+    runReport()
+    exit(0)
+}
 if let pid = value(after: "--resolve") {
     let resolution = ProcessResolver().resolve(pid: pid_t(pid), nettopName: "")
     print("\(pid) \(resolution.executableName) → \(resolution.identity.displayName) (\(resolution.method.rawValue))")

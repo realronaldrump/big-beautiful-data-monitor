@@ -171,6 +171,13 @@ func samples(_ events: [NettopEvent]) -> [NettopSample] {
         #expect(identity?.bundlePath == "/Applications/Google Chrome.app")
     }
 
+    @Test func helperAppsInsideSystemFrameworksAreNotApps() {
+        let resolver = ProcessResolver()
+        #expect(resolver.appIdentity(containing: "/System/Library/PrivateFrameworks/IMTransferServices.framework/IMTransferAgent.app/Contents/MacOS/IMTransferAgent") == nil)
+        #expect(resolver.appIdentity(containing: "/System/Applications/Messages.app/Contents/MacOS/Messages")?.displayName == "Messages")
+        #expect(FriendlyNames.lookup("IMTransferAgent")?.displayName == "Messages and FaceTime")
+    }
+
     @Test func bundleIDComponentsLookLikeBundleIDs() {
         #expect(ProcessResolver.looksLikeBundleID("io.tailscale.ipn.macsys.network-extension.systemextension"))
         #expect(!ProcessResolver.looksLikeBundleID("Google Chrome.app"))

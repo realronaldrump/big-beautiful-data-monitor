@@ -6,7 +6,7 @@
 
 The original generated PNG is 1254 × 1254 pixels, with a transparent background. Preserve its alpha channel when exporting or placing it on light or dark surfaces. Keep the mark's proportions and leave clear space around it. The name should be typeset separately when needed.
 
-The current project contains the monitoring engine and product specification; there is no app UI or app icon catalog yet. This asset is ready for that integration.
+The app icon is this logo on a soft light tile (macOS needs an opaque square), in `App/Resources/Assets.xcassets/AppIcon.appiconset`.
 
 Generated on October 21, 2026 with the built-in imagegen tool, with `transparent_background: true`. No CLI fallback was used. The artwork is preserved without post-processing.
 

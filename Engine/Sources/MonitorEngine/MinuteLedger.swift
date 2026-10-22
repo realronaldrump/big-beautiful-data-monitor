@@ -8,6 +8,14 @@ public struct MinuteSummary: Sendable {
     public let network: NetworkKind
     /// Nobody touched the keyboard or mouse during this minute.
     public let idle: Bool
+
+    public init(minute: Date, total: ByteCounts, apps: [AppIdentity: ByteCounts], network: NetworkKind, idle: Bool) {
+        self.minute = minute
+        self.total = total
+        self.apps = apps
+        self.network = network
+        self.idle = idle
+    }
 }
 
 /// Collects ticks into minutes and reconciles each minute once it can no longer change.
@@ -57,6 +65,17 @@ public struct MinuteLedger: Sendable {
             }
         }
         return close(before: tick.time.addingTimeInterval(-grace))
+    }
+
+    /// What the still-open minutes hold so far: the true total and the raw per-app split.
+    public var unsaved: (total: ByteCounts, apps: [AppIdentity: ByteCounts]) {
+        var total = ByteCounts.zero
+        var apps: [AppIdentity: ByteCounts] = [:]
+        for bucket in buckets.values {
+            total += bucket.total
+            for (app, bytes) in bucket.apps { apps[app, default: .zero] += bytes }
+        }
+        return (total, apps)
     }
 
     /// Closes every minute that ended before `cutoff` (or all of them, when flushing).
