@@ -135,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showNow() { show(.now) }
     @objc func showDay() { show(.day) }
     @objc func showMonth() { show(.month) }
+    @objc func showApps() { show(.apps) }
 
     private func show(_ tab: MainTab) {
         model.mainTab = tab
@@ -157,7 +158,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let viewItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
-        for (title, action, key) in [("Now", #selector(showNow), "1"), ("Day", #selector(showDay), "2"), ("Month", #selector(showMonth), "3")] {
+        for (title, action, key) in [("Now", #selector(showNow), "1"), ("Day", #selector(showDay), "2"), ("Month", #selector(showMonth), "3"),
+                                  ("Apps", #selector(showApps), "4")] {
             let item = viewMenu.addItem(withTitle: title, action: action, keyEquivalent: key)
             item.target = target
         }

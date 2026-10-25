@@ -28,6 +28,14 @@ public struct AppUsage: Sendable, Hashable {
     public let bytes: ByteCounts
 }
 
+/// One app's usage over a period, for the Apps overview.
+public struct AppTotal: Sendable, Hashable {
+    public let app: AppRecord
+    public let bytes: ByteCounts
+    /// The part of `bytes` that went over an iPhone hotspot.
+    public let hotspot: ByteCounts
+}
+
 /// One hour of a day: a petal of the Day ring.
 public struct HourUsage: Sendable {
     public let hour: Date
@@ -93,6 +101,26 @@ extension UsageDatabase {
                 ORDER BY sum(u.bytes_down + u.bytes_up) DESC
                 """, arguments: Self.bounds(interval))
             .map { AppUsage(app: AppRecord(row: $0), bytes: ByteCounts($0)) }
+        }
+    }
+
+    /// Every app's usage in an interval with the part carried by an iPhone hotspot, busiest first.
+    public func appTotals(in interval: DateInterval) throws -> [AppTotal] {
+        try read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT apps.*, sum(u.bytes_down) AS down, sum(u.bytes_up) AS up,
+                    sum(CASE WHEN u.network = ? THEN u.bytes_down ELSE 0 END) AS hotspot_down,
+                    sum(CASE WHEN u.network = ? THEN u.bytes_up ELSE 0 END) AS hotspot_up
+                FROM usage_hour u JOIN apps ON apps.id = u.app_id
+                WHERE u.hour >= ? AND u.hour < ?
+                GROUP BY u.app_id
+                ORDER BY sum(u.bytes_down + u.bytes_up) DESC
+                """, arguments: [NetworkKind.hotspot.storageCode, NetworkKind.hotspot.storageCode] + Self.bounds(interval))
+            .map { row in
+                AppTotal(app: AppRecord(row: row), bytes: ByteCounts(row),
+                         hotspot: ByteCounts(down: UInt64(max(0, row["hotspot_down"] as Int64)),
+                                             up: UInt64(max(0, row["hotspot_up"] as Int64))))
+            }
         }
     }
 

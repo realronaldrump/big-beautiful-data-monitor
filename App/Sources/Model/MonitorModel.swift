@@ -8,6 +8,7 @@ enum MainTab: String, CaseIterable, Identifiable {
     case now = "Now"
     case day = "Day"
     case month = "Month"
+    case apps = "Apps"
     var id: String { rawValue }
 }
 
@@ -41,6 +42,8 @@ final class MonitorModel {
     private(set) var todayByApp: [String: ByteCounts] = [:]
     /// Bytes not yet saved (the minute in progress); added to the current hour by the Day ring.
     private(set) var unsaved = ByteCounts.zero
+    /// The same per app, by app key; added to the Apps overview while its period includes now.
+    private(set) var unsavedByApp: [String: ByteCounts] = [:]
     private(set) var ribbon: [RibbonPoint] = []
     private(set) var ribbonScale: Double = MonitorModel.ribbonFloor
     /// Apps moving data now, in a stable order (new arrivals join at the end).
@@ -58,6 +61,11 @@ final class MonitorModel {
     var mainTab: MainTab = .now
     var shownDay = Date()
     var detailApp: AppIdentity?
+    /// The Apps overview's period. Its kind (and a custom range) is remembered between launches;
+    /// a day, week, month or year always reopens on the current one.
+    var overviewPeriod = MonitorModel.savedOverviewPeriod() {
+        didSet { Self.saveOverviewPeriod(overviewPeriod) }
+    }
 
     // MARK: Visibility (drives sampling rates and animation)
 
@@ -207,8 +215,13 @@ final class MonitorModel {
         guard isAnythingVisible else { return }
         for (app, _) in pending.apps where identities[app.key] == nil { identities[app.key] = app }
         var byApp = storedTodayByApp
-        for (app, bytes) in pending.apps { byApp[app.key, default: .zero] += bytes }
+        var unsavedByApp: [String: ByteCounts] = [:]
+        for (app, bytes) in pending.apps {
+            byApp[app.key, default: .zero] += bytes
+            unsavedByApp[app.key, default: .zero] += bytes
+        }
         todayByApp = byApp
+        self.unsavedByApp = unsavedByApp
         updateRibbon(live, now: now)
         updateLiveApps(live, now: now)
     }
@@ -287,6 +300,28 @@ final class MonitorModel {
         }
         storedTodayByApp = byApp
         today = storedToday + recorder.unsaved.total
+    }
+
+    // MARK: - Overview period
+
+    private static func savedOverviewPeriod() -> UsagePeriod {
+        let defaults = UserDefaults.standard
+        let kind = defaults.string(forKey: "overviewPeriod").flatMap(UsagePeriod.Kind.init(rawValue:)) ?? .month
+        guard kind == .custom else { return UsagePeriod(kind: kind) }
+        guard let first = defaults.object(forKey: "overviewFirstDay") as? Date,
+              let last = defaults.object(forKey: "overviewLastDay") as? Date else {
+            // No saved range: the last seven days.
+            return .days(Calendar.current.date(byAdding: .day, value: -6, to: Date())!, through: Date())
+        }
+        return .days(first, through: last)
+    }
+
+    private static func saveOverviewPeriod(_ period: UsagePeriod) {
+        let defaults = UserDefaults.standard
+        defaults.set(period.kind.rawValue, forKey: "overviewPeriod")
+        guard period.kind == .custom else { return }
+        defaults.set(period.anchor, forKey: "overviewFirstDay")
+        defaults.set(period.lastDay, forKey: "overviewLastDay")
     }
 
     // MARK: - Sampling rate

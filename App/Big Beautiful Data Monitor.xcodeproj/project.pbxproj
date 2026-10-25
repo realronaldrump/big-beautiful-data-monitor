@@ -13,6 +13,7 @@
 		454BEC4341A48911771455CB /* AppVisuals.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABACFF71904BDFD4D993B7C9 /* AppVisuals.swift */; };
 		53181A63104E4C3666941B1C /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D29B2B4D1A96712B47FD0C /* StatusItemController.swift */; };
 		5D71952FC98D2B215DE89B7F /* MonitorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCC5D2C4CD64D32E28A4FBC8 /* MonitorModel.swift */; };
+		7413592A892012634545147E /* AppsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B5B8C4AEC081AEB342359ED /* AppsView.swift */; };
 		7830B12D6E8A69DBC68AAECB /* RibbonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CB5A2CC7E22EF88000D9D78 /* RibbonView.swift */; };
 		84776FFF2471B31F125D04BA /* PopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C62EA42B955D41544EE0F54E /* PopoverView.swift */; };
 		87395F3C08D962EA297ABFA2 /* DayRingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63A05B94D1B2787206B25CE /* DayRingView.swift */; };
@@ -36,6 +37,7 @@
 		230926C72DFF16ABD8B8441E /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
 		359E61E6EFBD4FCA42F5FA22 /* AppDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDetailView.swift; sourceTree = "<group>"; };
 		398AA44D8A45461658D0DE10 /* PopoverController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverController.swift; sourceTree = "<group>"; };
+		3B5B8C4AEC081AEB342359ED /* AppsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppsView.swift; sourceTree = "<group>"; };
 		54135490C7E7EBE935833E03 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		5A8D48A73ADA8B982FDB271F /* DataMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DataMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		79B22FA826A603E626EB9EE4 /* Engine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Engine; path = ../Engine; sourceTree = SOURCE_ROOT; };
@@ -146,6 +148,7 @@
 			isa = PBXGroup;
 			children = (
 				359E61E6EFBD4FCA42F5FA22 /* AppDetailView.swift */,
+				3B5B8C4AEC081AEB342359ED /* AppsView.swift */,
 				D7B8CAA551711F91F0A38C41 /* Components.swift */,
 				F63A05B94D1B2787206B25CE /* DayRingView.swift */,
 				1711DB75612B1D1C1434B71D /* DayView.swift */,
@@ -238,6 +241,7 @@
 				DFD0A33B7A48FB2606A78552 /* AppDelegate.swift in Sources */,
 				E707807125466A4D7D7DBDE9 /* AppDetailView.swift in Sources */,
 				454BEC4341A48911771455CB /* AppVisuals.swift in Sources */,
+				7413592A892012634545147E /* AppsView.swift in Sources */,
 				EAC03188FB3BF335A494AD77 /* Components.swift in Sources */,
 				87395F3C08D962EA297ABFA2 /* DayRingView.swift in Sources */,
 				0E0EE6290602BF0EED2416F7 /* DayView.swift in Sources */,

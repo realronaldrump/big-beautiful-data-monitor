@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The main window: Now, Day and Month behind a quiet segmented control.
+/// The main window: Now, Day, Month and Apps behind a quiet segmented control.
 /// Its SwiftUI content exists only while the window is open, so nothing animates when closed.
 @MainActor
 final class MainWindowController: NSObject, NSWindowDelegate {

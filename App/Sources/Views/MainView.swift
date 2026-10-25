@@ -5,7 +5,7 @@ extension AppIdentity: @retroactive Identifiable {
     public var id: String { key }
 }
 
-/// The main window: Now, Day and Month behind one quiet segmented control.
+/// The main window: Now, Day, Month and Apps behind one quiet segmented control.
 /// No sidebar, no toolbar, no settings on screen.
 struct MainView: View {
     @Bindable var model: MonitorModel
@@ -17,6 +17,7 @@ struct MainView: View {
                 case .now: NowView()
                 case .day: DayView()
                 case .month: MonthView()
+                case .apps: AppsView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

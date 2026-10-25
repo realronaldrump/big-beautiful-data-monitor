@@ -14,13 +14,18 @@ Logo artwork and its generation prompt are in [Branding](Branding/).
 - **Panel.** Today's total, a ribbon of the last minute (downloads above the line, uploads below),
   and the apps active right now. Hover the total for an everyday comparison, hover the ribbon for
   that second's speed, hover an icon for its name and today's amount. Click an icon for details.
-- **Open** shows the window, with three views:
+- **Open** shows the window, with four views:
   - **Now:** a pond of bubbles, one per active app. Busy apps swell; idle ones fade away.
   - **Day:** a 24-hour ring, midnight at the top. Hover a petal for that hour; click it to see its apps.
     Up to three short notes ("Moments") sit underneath; hover one and click the × to dismiss it.
   - **Month:** one circle per day, sized by that day's total. Click a day to open it.
+  - **Apps:** every app's data for a period, with the period's total on top. Click the period's name
+    to choose a day, week, month, year, all time or a custom range of days; the arrows step to earlier
+    or later ones. Click a column title to sort by name, downloads (↓), uploads (↑) or total; click it
+    again to reverse the order. Hover an app to see its share of the total; click it for details.
+    A small hotspot icon marks apps that used an iPhone hotspot (hover it for how much).
 - **⋯ menu** in the panel: Open at login, Show speed in menu bar, Reset data, Quit.
-- Shortcuts while the window is in front: ⌘1, ⌘2, ⌘3 switch views; ⌘W closes the window.
+- Shortcuts while the window is in front: ⌘1 to ⌘4 switch views; ⌘W closes the window.
 
 ## Where things live
 
